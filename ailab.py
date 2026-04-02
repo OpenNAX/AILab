@@ -1,10 +1,10 @@
 import os
-import subprocess
+import sys
 import time
 import curses
-import sys
 import atexit
 import signal
+import subprocess
 from datetime import datetime
 
 BLACK = "\033[0;30m"
@@ -50,12 +50,12 @@ def print_banner():
                █████
               ░░░░░
     {RESET}"""
-    print(banner)
+    print(opennax)
     print(f"{CYAN}Starting AILab · {version}...{RESET}\n")
 
 def cleanup():
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-    print(f"{YELLOW}[ALERT] [{timestamp}] Stopping ollama processes (killall ollama)...{RESET}")
+    print(f"{YELLOW}[ALERT] [{timestamp}] Stopping ollama processes...{RESET}")
     try:
         subprocess.run(["killall", "ollama"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
     except Exception:
@@ -86,32 +86,44 @@ def get_installed_models():
 
 def display_interactive_menu(stdscr, models):
     curses.curs_set(0)
-    current_row = 0
+    
+    display_items = list(models)
+    if not display_items:
+        display_items.append("No models found")
+    display_items.append("[Install new model]")
+    
+    current_row = 1 if not models else 0
 
     while True:
         stdscr.clear()
         stdscr.addstr(0, 0, "Select Ollama model (Up/Down: Move | Enter: Select | 'q': Quit):", curses.A_BOLD)
 
-        for idx, model in enumerate(models):
+        for idx, item in enumerate(display_items):
             x = 2
             y = 2 + idx
             if idx == current_row:
                 stdscr.attron(curses.color_pair(1))
-                stdscr.addstr(y, x, f"> {model}")
+                stdscr.addstr(y, x, f"> {item}")
                 stdscr.attroff(curses.color_pair(1))
             else:
-                stdscr.addstr(y, x, f"  {model}")
+                stdscr.addstr(y, x, f"  {item}")
 
         stdscr.refresh()
 
         key = stdscr.getch()
 
         if key == curses.KEY_UP and current_row > 0:
-            current_row -= 1
-        elif key == curses.KEY_DOWN and current_row < len(models) - 1:
+            if not models and current_row == 1:
+                pass
+            else:
+                current_row -= 1
+        elif key == curses.KEY_DOWN and current_row < len(display_items) - 1:
             current_row += 1
         elif key in [curses.KEY_ENTER, 10, 13]:
-            return models[current_row]
+            if not models and current_row == 0:
+                pass
+            else:
+                return display_items[current_row]
         elif key == ord('q'):
             return None
 
@@ -119,12 +131,12 @@ def start_ollama_server():
     global ollama_process
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     
-    print(f"{LIGHT_GREEN}[{timestamp}] Starting 'ollama serve' in background...{RESET}")
+    print(f"{LIGHT_GREEN}[{timestamp}] Starting ollama server in background...{RESET}")
     with open('/dev/null', 'w') as devnull:
         try:
             ollama_process = subprocess.Popen(["ollama", "serve"], stdout=devnull, stderr=devnull)
         except FileNotFoundError:
-            print(f"{RED}[ERROR] [{timestamp}] Could not start 'ollama serve'. Ensure Ollama is installed.{RESET}")
+            print(f"{RED}[ERROR] [{timestamp}] Could not start ollama server. Ensure Ollama has been installed using install.sh.{RESET}")
             sys.exit(1)
 
 def run_curses_ui(stdscr, models):
@@ -147,15 +159,23 @@ def main():
     
     models = get_installed_models()
 
-    if not models:
-        print(f"{RED}[ERROR] [{timestamp}] No installed Ollama models found.{RESET}")
-        sys.exit(0)
-
     time.sleep(1.5)
 
     selected_model = curses.wrapper(run_curses_ui, models)
 
-    if selected_model:
+    if selected_model == "[Install new model]":
+        model_name = input(f"\n{LIGHT_CYAN}Enter model name to install: {RESET}")
+        if model_name.strip():
+            end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            print(f"\n{LIGHT_CYAN}[{end_timestamp}] Installing and starting model: {model_name.strip()}...{RESET}\n")
+            try:
+                subprocess.run(["ollama", "run", model_name.strip()])
+            except KeyboardInterrupt:
+                pass
+        else:
+            end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            print(f"\n{YELLOW}[ALERT] [{end_timestamp}] Installation cancelled.{RESET}")
+    elif selected_model:
         end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         print(f"\n{LIGHT_CYAN}[{end_timestamp}] Starting model: {selected_model}...{RESET}\n")
         try:
