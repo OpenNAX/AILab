@@ -1,7 +1,6 @@
 import os
 import re
 import sys
-import time
 import curses
 import atexit
 import signal
@@ -56,12 +55,15 @@ def print_banner():
     print(f"{CYAN}Starting AILab · {version}...{RESET}\n")
 
 def cleanup():
+    global ollama_process
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-    print(f"{YELLOW}[ALERT] [{timestamp}] Stopping ollama processes...{RESET}")
-    try:
-        subprocess.run(["killall", "ollama"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-    except Exception:
-        pass
+    if ollama_process:
+        print(f"{YELLOW}[ALERT] [{timestamp}] Stopping AILab ollama process...{RESET}")
+        try:
+            ollama_process.terminate()
+            ollama_process.wait(timeout=2)
+        except Exception:
+            pass
 
 def _fetch_model_info(line):
     parts = line.split()
@@ -101,7 +103,6 @@ def _fetch_model_info(line):
 def get_installed_models():
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     try:
-        time.sleep(1)
         result = subprocess.run(["ollama", "list"], capture_output=True, text=True, check=True)
         lines = result.stdout.strip().split('\n')
         
@@ -202,8 +203,6 @@ def main():
     print(f"{LIGHT_GREEN}[{timestamp}] Fetching model list...{RESET}")
     
     models = get_installed_models()
-
-    time.sleep(1.5)
 
     selected_model = curses.wrapper(run_curses_ui, models)
 
