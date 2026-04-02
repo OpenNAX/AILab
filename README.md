@@ -4,7 +4,7 @@ And run the following commands to continue
 
 ### One time:
 ```bash
-pkg update && pkg install git -y
+apt update && apt install git -y
 git clone https://github.com/OpenNAX/AILab.git
 cd AILab
 ```
