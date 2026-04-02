@@ -1,0 +1,1 @@
+Copyright (C) 2026 NAX Entertainment. Some rights reserved. This project is distributed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0).
