@@ -2,6 +2,17 @@
 
 clear
 
+OOM_BYPASS=0
+
+for arg in "$@"; do
+    case $arg in
+        --oom-bypass)
+        OOM_BYPASS=1
+        shift
+        ;;
+    esac
+done
+
 echo "[*] Optimizing system resources for Local AI (GPU/CPU)..."
 
 ulimit -n 65535 2>/dev/null || true
@@ -44,6 +55,37 @@ if [[ "$OSTYPE" == "linux-gnu"* ]] && [[ -z "$TERMUX_VERSION" ]]; then
 fi
 
 trap restore_governor EXIT
+
+if [[ "$OOM_BYPASS" -eq 0 ]]; then
+    TOTAL_RAM=0
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        TOTAL_RAM=$(($(sysctl -n hw.memsize 2>/dev/null) / 1048576))
+    elif command -v free >/dev/null 2>&1; then
+        TOTAL_RAM=$(free -m | awk '/^Mem:/{print $2}')
+    fi
+
+    if [[ -n "$TOTAL_RAM" ]] && [[ "$TOTAL_RAM" -gt 0 ]]; then
+        SAFE_RAM=$((TOTAL_RAM * 75 / 100))
+        export GOMEMLIMIT="${SAFE_RAM}MiB"
+        echo "[*] Dynamic Memory Protection: GOMEMLIMIT set to ${GOMEMLIMIT} (Total RAM: ${TOTAL_RAM}MiB)"
+    fi
+fi
+
+if [[ -n "$TERMUX_VERSION" ]]; then
+    if [[ "$OOM_BYPASS" -eq 1 ]]; then
+        echo ""
+        echo "[!] Termux detected, but --oom-bypass is enabled."
+        echo "    WARNING: Memory protections are DISABLED. Device may freeze or reboot!"
+    else
+        echo ""
+        echo "[!] Termux detected. Applying memory protections (Anti-OOM)..."
+
+        export OLLAMA_NUM_PARALLEL=1
+        export OLLAMA_MAX_QUEUE=1
+        export OLLAMA_KV_CACHE_TYPE="q8_0"
+        export OLLAMA_FLASH_ATTENTION=0
+    fi
+fi
 
 echo ""
 echo "[+] Starting OpenNAX AILab | v2.0.0"
