@@ -177,11 +177,26 @@ def start_ollama_server():
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     
     print(f"{LIGHT_GREEN}[{timestamp}] Starting ollama server in background...{RESET}")
+    
+    cmd = []
+    
+    # Prioridad I/O alta en Linux/Termux para acelerar carga en RAM
+    if sys.platform.startswith("linux"):
+        if subprocess.call("command -v ionice >/dev/null 2>&1", shell=True) == 0:
+            cmd.extend(["ionice", "-c", "2", "-n", "0"])
+            
+    # Prioridad de CPU alta para el servidor IA si es root
+    if subprocess.call("command -v nice >/dev/null 2>&1", shell=True) == 0:
+        if hasattr(os, 'geteuid') and os.geteuid() == 0:
+            cmd.extend(["nice", "-n", "-5"])
+        
+    cmd.extend(["ollama", "serve"])
+    
     with open('/dev/null', 'w') as devnull:
         try:
-            ollama_process = subprocess.Popen(["ollama", "serve"], stdout=devnull, stderr=devnull)
+            ollama_process = subprocess.Popen(cmd, stdout=devnull, stderr=devnull)
         except FileNotFoundError:
-            print(f"{RED}[ERROR] [{timestamp}] Could not start ollama server. Ensure Ollama has been installed using install.sh.{RESET}")
+            print(f"{RED}[ERROR] [{timestamp}] Could not start ollama server. Ensure Ollama has been installed.{RESET}")
             sys.exit(1)
 
 def run_curses_ui(stdscr, models):

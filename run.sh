@@ -87,11 +87,37 @@ if [[ -n "$TERMUX_VERSION" ]]; then
     fi
 fi
 
+# Calcular hilos para optimizar batería y evitar thermal throttling
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # En macOS intentamos usar solo los P-Cores
+    P_CORES=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null)
+    if [ -z "$P_CORES" ] || [ "$P_CORES" -eq 0 ]; then
+        P_CORES=$(sysctl -n hw.physicalcpu 2>/dev/null)
+    fi
+    export OLLAMA_NUM_THREADS=${P_CORES:-4}
+else
+    # En Linux/Android (big.LITTLE o SMT), usar la mitad de los hilos lógicos suele evitar usar E-cores
+    LOGICAL_CORES=$(nproc 2>/dev/null || echo 4)
+    OPT_THREADS=$((LOGICAL_CORES / 2))
+    if [ "$OPT_THREADS" -eq 0 ]; then OPT_THREADS=1; fi
+    export OLLAMA_NUM_THREADS=${OPT_THREADS}
+fi
+echo "[*] Thermal/Battery Optimization: OLLAMA_NUM_THREADS set to ${OLLAMA_NUM_THREADS}"
+
 echo ""
 echo "[+] Starting OpenNAX AILab | v2.0.0"
 
-if [ "$(id -u)" -eq 0 ]; then
-    nice -n -10 python3 ailab.py
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "[*] macOS detected: Wrapping with 'caffeinate' to prevent App Nap & sleep..."
+    if [ "$(id -u)" -eq 0 ]; then
+        caffeinate -i nice -n -10 python3 ailab.py
+    else
+        caffeinate -i python3 ailab.py
+    fi
 else
-    python3 ailab.py
+    if [ "$(id -u)" -eq 0 ]; then
+        nice -n -10 python3 ailab.py
+    else
+        python3 ailab.py
+    fi
 fi
