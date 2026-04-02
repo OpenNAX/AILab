@@ -6,6 +6,7 @@ import curses
 import atexit
 import signal
 import subprocess
+import concurrent.futures
 from datetime import datetime
 
 BLACK = "\033[0;30m"
@@ -62,6 +63,41 @@ def cleanup():
     except Exception:
         pass
 
+def _fetch_model_info(line):
+    parts = line.split()
+    if not parts:
+        return None
+    name = parts[0]
+    
+    size_str = "Unknown"
+    if len(parts) >= 3:
+        if any(x in parts[2] for x in ["GB", "MB", "KB", "B"]):
+            size_str = parts[2]
+        elif len(parts) >= 4 and parts[3] in ["GB", "MB", "KB", "B"]:
+            size_str = f"{parts[2]} {parts[3]}"
+    
+    params_str = "Unknown"
+    try:
+        show_res = subprocess.run(["ollama", "show", name], capture_output=True, text=True)
+        for show_line in show_res.stdout.split('\n'):
+            if "parameters" in show_line.lower():
+                params_str = show_line.split()[-1]
+                break
+    except Exception:
+        pass
+        
+    base_name = name.split(':')[0]
+    match = re.match(r"([a-zA-Z\-]+)(.*)", base_name)
+    if match:
+        name_part = match.group(1).capitalize()
+        num_part = match.group(2)
+        clean_name = f"{name_part} {num_part}".strip() if num_part else name_part
+    else:
+        clean_name = base_name.capitalize()
+        
+    display_name = f"{clean_name} (Size: {size_str} | Params: {params_str})"
+    return {"name": name, "display": display_name}
+
 def get_installed_models():
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     try:
@@ -73,40 +109,11 @@ def get_installed_models():
             return []
             
         models = []
-        for line in lines[1:]:
-            parts = line.split()
-            if not parts:
-                continue
-            name = parts[0]
-            
-            size_str = "Unknown"
-            if len(parts) >= 3:
-                if any(x in parts[2] for x in ["GB", "MB", "KB", "B"]):
-                    size_str = parts[2]
-                elif len(parts) >= 4 and parts[3] in ["GB", "MB", "KB", "B"]:
-                    size_str = f"{parts[2]} {parts[3]}"
-            
-            params_str = "Unknown"
-            try:
-                show_res = subprocess.run(["ollama", "show", name], capture_output=True, text=True)
-                for show_line in show_res.stdout.split('\n'):
-                    if "parameters" in show_line.lower():
-                        params_str = show_line.split()[-1]
-                        break
-            except Exception:
-                pass
-                
-            base_name = name.split(':')[0]
-            match = re.match(r"([a-zA-Z\-]+)(.*)", base_name)
-            if match:
-                name_part = match.group(1).capitalize()
-                num_part = match.group(2)
-                clean_name = f"{name_part} {num_part}".strip() if num_part else name_part
-            else:
-                clean_name = base_name.capitalize()
-                
-            display_name = f"{clean_name} (Size: {size_str} | Params: {params_str})"
-            models.append({"name": name, "display": display_name})
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results = executor.map(_fetch_model_info, lines[1:])
+            for res in results:
+                if res:
+                    models.append(res)
             
         return models
         
@@ -123,6 +130,7 @@ def display_interactive_menu(stdscr, models):
     if not display_items:
         display_items.append("No models found")
     display_items.append("[Install new model]")
+    display_items.append("[Delete model]")
     
     current_row = 1 if not models else 0
 
@@ -154,8 +162,10 @@ def display_interactive_menu(stdscr, models):
         elif key in [curses.KEY_ENTER, 10, 13]:
             if not models and current_row == 0:
                 pass
-            elif current_row == len(display_items) - 1:
+            elif display_items[current_row] == "[Install new model]":
                 return "[Install new model]"
+            elif display_items[current_row] == "[Delete model]":
+                return "[Delete model]"
             else:
                 return models[current_row]["name"]
         elif key == ord('q'):
@@ -209,6 +219,18 @@ def main():
         else:
             end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
             print(f"\n{YELLOW}[ALERT] [{end_timestamp}] Installation cancelled.{RESET}")
+    elif selected_model == "[Delete model]":
+        model_name = input(f"\n{LIGHT_CYAN}Enter model name to delete: {RESET}")
+        if model_name.strip():
+            end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            print(f"\n{LIGHT_CYAN}[{end_timestamp}] Deleting model: {model_name.strip()}...{RESET}\n")
+            try:
+                subprocess.run(["ollama", "rm", model_name.strip()])
+            except KeyboardInterrupt:
+                pass
+        else:
+            end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            print(f"\n{YELLOW}[ALERT] [{end_timestamp}] Deletion cancelled.{RESET}")
     elif selected_model:
         end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         print(f"\n{LIGHT_CYAN}[{end_timestamp}] Starting model: {selected_model}...{RESET}\n")
