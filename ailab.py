@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import time
 import curses
@@ -74,8 +75,39 @@ def get_installed_models():
         models = []
         for line in lines[1:]:
             parts = line.split()
-            if parts:
-                models.append(parts[0])
+            if not parts:
+                continue
+            name = parts[0]
+            
+            size_str = "Unknown"
+            if len(parts) >= 3:
+                if any(x in parts[2] for x in ["GB", "MB", "KB", "B"]):
+                    size_str = parts[2]
+                elif len(parts) >= 4 and parts[3] in ["GB", "MB", "KB", "B"]:
+                    size_str = f"{parts[2]} {parts[3]}"
+            
+            params_str = "Unknown"
+            try:
+                show_res = subprocess.run(["ollama", "show", name], capture_output=True, text=True)
+                for show_line in show_res.stdout.split('\n'):
+                    if "parameters" in show_line.lower():
+                        params_str = show_line.split()[-1]
+                        break
+            except Exception:
+                pass
+                
+            base_name = name.split(':')[0]
+            match = re.match(r"([a-zA-Z\-]+)(.*)", base_name)
+            if match:
+                name_part = match.group(1).capitalize()
+                num_part = match.group(2)
+                clean_name = f"{name_part} {num_part}".strip() if num_part else name_part
+            else:
+                clean_name = base_name.capitalize()
+                
+            display_name = f"{clean_name} (Size: {size_str} | Params: {params_str})"
+            models.append({"name": name, "display": display_name})
+            
         return models
         
     except subprocess.CalledProcessError:
@@ -87,7 +119,7 @@ def get_installed_models():
 def display_interactive_menu(stdscr, models):
     curses.curs_set(0)
     
-    display_items = list(models)
+    display_items = [m["display"] for m in models]
     if not display_items:
         display_items.append("No models found")
     display_items.append("[Install new model]")
@@ -122,8 +154,10 @@ def display_interactive_menu(stdscr, models):
         elif key in [curses.KEY_ENTER, 10, 13]:
             if not models and current_row == 0:
                 pass
+            elif current_row == len(display_items) - 1:
+                return "[Install new model]"
             else:
-                return display_items[current_row]
+                return models[current_row]["name"]
         elif key == ord('q'):
             return None
 
