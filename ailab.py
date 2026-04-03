@@ -208,9 +208,9 @@ def start_ollama_server():
         
     cmd.extend(["ollama", "serve"])
     
-    with open('/dev/null', 'w') as devnull:
+    with open('ollama_server.log', 'w') as log_file:
         try:
-            ollama_process = subprocess.Popen(cmd, stdout=devnull, stderr=devnull)
+            ollama_process = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
         except FileNotFoundError:
             print(f"{RED}[ERROR] [{timestamp}] Could not start ollama server. Ensure Ollama has been installed.{RESET}")
             sys.exit(1)
