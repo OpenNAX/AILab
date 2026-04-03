@@ -35,6 +35,18 @@ If you are running AILab on a specific hardware configuration and want to disabl
 - `--power-save` : Restores the legacy battery-saving behavior (Linux/Android only), limiting Ollama to 50% of available CPU cores. Useful if you want to run AILab in the background without depleting your mobile battery.
 - `--elite` : Forces the **Elite Performance Mode** regardless of RAM. This enables memory-mapped files (`mmap`), Flash Attention, and high-precision FP16 KV cache. Recommended for Snapdragon 8 Gen 2 / 8 Elite or similar top-tier hardware.
 
+### GPU Acceleration (Adreno/Vulkan):
+AILab now includes an automated **Vulkan Bridge** for Android/Termux. 
+- The script automatically scans for system drivers in `/vendor` and `/system`.
+- It creates a symlink in `$PREFIX/lib/libvulkan.so` to bridge Android and Termux environments.
+- It generates a custom **Adreno ICD** (`adreno_icd.json`) to force Vulkan tools to see your mobile GPU.
+
+**To verify GPU status**:
+1. Run `./run.sh`.
+2. Load a model.
+3. In another terminal, run `ollama ps`. If the processor shows `GPU`, the bridge is active.
+
 - `--fp16-cache` : (Legacy) Disables the global 8-bit (`q8_0`) KV Cache quantization. Note: Elite Mode enables this by default.
+
 
 - `--no-keepalive` : Disables the infinite memory lock (`KEEP_ALIVE="-1"`). The model will be unloaded from RAM if inactive for 5 minutes, freeing up memory for other tasks.

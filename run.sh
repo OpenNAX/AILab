@@ -140,8 +140,55 @@ if [[ "$OOM_BYPASS" -eq 0 ]]; then
     fi
 fi
 
+setup_vulkan_bridge() {
+    echo "[*] GPU Bridge: Scanning for Android Vulkan drivers..."
+    
+    # 1. Discovery
+    CANDIDATES=(
+        "/vendor/lib64/hw/vulkan.adreno.so"
+        "/vendor/lib64/libvulkan.so"
+        "/system/lib64/libvulkan.so"
+        "/system/vendor/lib64/libvulkan.so"
+    )
+    
+    FOUND_VULKAN=""
+    for lib in "${CANDIDATES[@]}"; do
+        if [[ -f "$lib" ]]; then
+            FOUND_VULKAN="$lib"
+            break
+        fi
+    done
+    
+    if [[ -n "$FOUND_VULKAN" ]]; then
+        echo "[+] Found system Vulkan driver: $FOUND_VULKAN"
+        
+        # 2. Setup Environment
+        export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$(dirname $FOUND_VULKAN)"
+        export OLLAMA_VULKAN=1
+        
+        # 3. Create Prefix Link if missing (Crucial for many binaries)
+        if [[ ! -L "$PREFIX/lib/libvulkan.so" ]] && [[ ! -f "$PREFIX/lib/libvulkan.so" ]]; then
+            echo "[*] Linking system Vulkan to Termux lib folder..."
+            ln -s "$FOUND_VULKAN" "$PREFIX/lib/libvulkan.so" 2>/dev/null || true
+        fi
+        
+        # 4. Generate ICD for Adreno if applicable
+        if [[ "$FOUND_VULKAN" == *"adreno"* ]]; then
+            ICD_PATH="$HOME/.ollama/adreno_icd.json"
+            mkdir -p "$(dirname $ICD_PATH)"
+            echo "{\"file_format_version\": \"1.0.0\", \"ICD\": {\"library_path\": \"$FOUND_VULKAN\", \"api_version\": \"1.3.0\"}}" > "$ICD_PATH"
+            export VK_ICD_FILENAMES="$ICD_PATH"
+            echo "[*] Adreno ICD configured at $ICD_PATH"
+        fi
+    else
+        echo "[!] No system Vulkan driver detected. GPU acceleration may be unavailable."
+    fi
+}
+
 if [[ -n "$TERMUX_VERSION" ]]; then
+    setup_vulkan_bridge
     if [[ "$OOM_BYPASS" -eq 1 ]]; then
+
         echo ""
         echo "[!] Termux detected, but --oom-bypass is enabled."
         echo "    WARNING: Memory protections are DISABLED. Device may freeze or reboot!"
