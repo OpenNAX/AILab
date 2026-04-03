@@ -8,6 +8,10 @@ import subprocess
 import concurrent.futures
 from datetime import datetime
 
+if os.environ.get("OPENNAX_AILAB_RUN") != "1":
+    print("\033[1;31m[ERROR] Do not run this script directly. Please use ./run.sh instead to apply system optimizations.\033[0m")
+    sys.exit(1)
+
 BLACK = "\033[0;30m"
 RED = "\033[0;31m"
 GREEN = "\033[0;32m"
@@ -180,12 +184,21 @@ def start_ollama_server():
     
     cmd = []
     
-    # Prioridad I/O alta en Linux/Termux para acelerar carga en RAM
+    if sys.platform.startswith("linux"):
+        if subprocess.call("command -v taskset >/dev/null 2>&1", shell=True) == 0:
+            try:
+                cpu_count = os.cpu_count() or 4
+                num_threads = int(os.environ.get("OLLAMA_NUM_THREADS", cpu_count))
+                start_core = max(0, cpu_count - num_threads)
+                end_core = cpu_count - 1
+                cmd.extend(["taskset", "-c", f"{start_core}-{end_core}"])
+            except Exception:
+                pass
+                
     if sys.platform.startswith("linux"):
         if subprocess.call("command -v ionice >/dev/null 2>&1", shell=True) == 0:
             cmd.extend(["ionice", "-c", "2", "-n", "0"])
             
-    # Prioridad de CPU alta para el servidor IA si es root
     if subprocess.call("command -v nice >/dev/null 2>&1", shell=True) == 0:
         if hasattr(os, 'geteuid') and os.geteuid() == 0:
             cmd.extend(["nice", "-n", "-5"])
