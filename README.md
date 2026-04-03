@@ -46,7 +46,6 @@ AILab now includes an automated **Vulkan Bridge** for Android/Termux.
 2. Load a model.
 3. In another terminal, run `ollama ps`. If the processor shows `GPU`, the bridge is active.
 
-- `--fp16-cache` : (Legacy) Disables the global 8-bit (`q8_0`) KV Cache quantization. Note: Elite Mode enables this by default.
-
+- `--fp16-cache` : (Legacy) Disables the global 8-bit (`q8_0`) KV Cache quantization. Note: Elite Mode enables this by default
 
 - `--no-keepalive` : Disables the infinite memory lock (`KEEP_ALIVE="-1"`). The model will be unloaded from RAM if inactive for 5 minutes, freeing up memory for other tasks.

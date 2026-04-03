@@ -243,51 +243,52 @@ def main():
     start_ollama_server()
     atexit.register(cleanup)
 
-    def signal_handler(sig, frame):
-        sys.exit(0)
-    signal.signal(signal.SIGINT, signal_handler)
-
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-    print(f"{LIGHT_GREEN}[{timestamp}] Fetching model list...{RESET}")
-    
-    models = get_installed_models()
-
-    selected_model = curses.wrapper(run_curses_ui, models)
-
-    if selected_model == "[Install new model]":
-        model_name = input(f"\n{LIGHT_CYAN}Enter model name to install: {RESET}")
-        if model_name.strip():
-            end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            print(f"\n{LIGHT_CYAN}[{end_timestamp}] Installing and starting model: {model_name.strip()}...{RESET}\n")
-            try:
-                subprocess.run(["ollama", "run", model_name.strip()])
-            except KeyboardInterrupt:
-                pass
-        else:
-            end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            print(f"\n{YELLOW}[ALERT] [{end_timestamp}] Installation cancelled.{RESET}")
-    elif selected_model == "[Delete model]":
-        model_name = input(f"\n{LIGHT_CYAN}Enter model name to delete: {RESET}")
-        if model_name.strip():
-            end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            print(f"\n{LIGHT_CYAN}[{end_timestamp}] Deleting model: {model_name.strip()}...{RESET}\n")
-            try:
-                subprocess.run(["ollama", "rm", model_name.strip()])
-            except KeyboardInterrupt:
-                pass
-        else:
-            end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            print(f"\n{YELLOW}[ALERT] [{end_timestamp}] Deletion cancelled.{RESET}")
-    elif selected_model:
-        end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        print(f"\n{LIGHT_CYAN}[{end_timestamp}] Starting model: {selected_model}...{RESET}\n")
+    while True:
         try:
-            subprocess.run(["ollama", "run", selected_model])
-        except KeyboardInterrupt:
-            pass
-    else:
-        end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        print(f"\n{YELLOW}[ALERT] [{end_timestamp}] Selection cancelled.{RESET}")
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            print(f"{LIGHT_GREEN}[{timestamp}] Fetching model list...{RESET}")
+            
+            models = get_installed_models()
+            selected_model = curses.wrapper(run_curses_ui, models)
+
+            if selected_model is None: # Pressed 'q'
+                break
+
+            if selected_model == "[Install new model]":
+                try:
+                    model_name = input(f"\n{LIGHT_CYAN}Enter model name to install: {RESET}")
+                    if model_name.strip():
+                        end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                        print(f"\n{LIGHT_CYAN}[{end_timestamp}] Installing and starting model: {model_name.strip()}...{RESET}\n")
+                        subprocess.run(["ollama", "run", model_name.strip()])
+                except (KeyboardInterrupt, EOFError):
+                    print(f"\n{YELLOW}[INFO] Installation cancelled.{RESET}")
+            
+            elif selected_model == "[Delete model]":
+                try:
+                    model_name = input(f"\n{LIGHT_CYAN}Enter model name to delete: {RESET}")
+                    if model_name.strip():
+                        end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                        print(f"\n{LIGHT_CYAN}[{end_timestamp}] Deleting model: {model_name.strip()}...{RESET}\n")
+                        subprocess.run(["ollama", "rm", model_name.strip()])
+                except (KeyboardInterrupt, EOFError):
+                    print(f"\n{YELLOW}[INFO] Deletion cancelled.{RESET}")
+            
+            elif selected_model:
+                try:
+                    end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                    print(f"\n{LIGHT_CYAN}[{end_timestamp}] Starting model: {selected_model}...{RESET}\n")
+                    subprocess.run(["ollama", "run", selected_model])
+                except (KeyboardInterrupt, EOFError):
+                    print(f"\n{YELLOW}[INFO] Model execution interrupted.{RESET}")
+            
+        except Exception as e:
+            if not isinstance(e, SystemExit):
+                print(f"\n{RED}[ERROR] Unhandled error: {e}{RESET}")
+                time.sleep(2)
+        
+    end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    print(f"\n{YELLOW}[EXIT] [{end_timestamp}] Exiting AILab...{RESET}")
 
 if __name__ == "__main__":
     main()
