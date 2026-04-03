@@ -96,7 +96,17 @@ def _fetch_model_info(line):
     except Exception:
         pass
         
-    display_name = f"{name} (Size: {size_str} | Params: {params_str})"
+    # Restore sanitization for clean UI (e.g. gemma3:4b -> Gemma 3)
+    base_name = name.split(':')[0]
+    match = re.match(r"([a-zA-Z\-]+)([0-9\.]*).*", base_name)
+    if match:
+        name_part = match.group(1).replace('-', ' ').strip().capitalize()
+        num_part = match.group(2)
+        clean_name = f"{name_part} {num_part}".strip() if num_part else name_part
+    else:
+        clean_name = base_name.capitalize()
+        
+    display_name = f"{clean_name} (Size: {size_str} | Params: {params_str})"
     return {"name": name, "display": display_name}
 
 
@@ -145,6 +155,81 @@ def get_installed_models():
     except FileNotFoundError:
         print(f"{RED}[ERROR] [{timestamp}] 'ollama' command not found. Ensure Ollama is installed.{RESET}")
         sys.exit(1)
+
+# --- 1. CATEGORÍA: ULTRA LIGEROS (Termux / Android / Raspberry Pi) ---
+MODELS_CATALOG = [
+    {"id": "deepseek-r1:1.5b", "ram": 2, "desc": "Razonamiento logico asombroso para su tamaño", "cat": "Ultra Light"},
+    {"id": "gemma3:4b", "ram": 4, "desc": "Rey en pesos pluma. Multimodal y alta calidad", "cat": "Ultra Light"},
+    {"id": "llama3.2:3b", "ram": 3, "desc": "Muy rapido, eficiente y excelente para chat directo", "cat": "Ultra Light"},
+    
+    # --- 2. CATEGORÍA: EL PUNTO DULCE (8GB-16GB RAM) ---
+    {"id": "deepseek-r1:8b", "ram": 8, "desc": "Nivel de inteligencia brutal con bajo consumo", "cat": "Sweet Point"},
+    {"id": "gemma3:12b", "ram": 10, "desc": "El mejor todoterreno. Multimodal de alta gama", "cat": "Sweet Point"},
+    {"id": "qwen2.5:7b", "ram": 8, "desc": "Excelente soporte en español, mates y codigo", "cat": "Sweet Point"},
+    
+    # --- 3. CATEGORÍA: ALTO RENDIMIENTO (20GB+ RAM) ---
+    {"id": "gemma3:27b", "ram": 20, "desc": "Calidad de modelo comercial en formato abierto", "cat": "High Performance"},
+    {"id": "qwen2.5:32b", "ram": 24, "desc": "Una bestia para desarrollo y redaccion compleja", "cat": "High Performance"},
+    {"id": "llama3.3:70b", "ram": 40, "desc": "El modelo abierto más potente (Hardware Pesado)", "cat": "High Performance"},
+    
+    # --- 4. CATEGORÍA: HERRAMIENTAS DE APOYO ---
+    {"id": "nomic-embed-text", "ram": 1, "desc": "Para vectorizar texto (RAG / Lectura PDFs)", "cat": "Support Tools"},
+    {"id": "qwen2.5-coder:1.5b", "ram": 2, "desc": "Autocompletado de codigo rapido en segundo plano", "cat": "Support Tools"},
+]
+
+def get_system_memory_gb():
+    """Detects total physical RAM in GB with a fallback for andriod/linux."""
+    try:
+        if os.path.exists('/proc/meminfo'):
+            with open('/proc/meminfo', 'r') as f:
+                for line in f:
+                    if "MemTotal" in line:
+                        mem_kb = int(line.split()[1])
+                        return round(mem_kb / (1024 * 1024), 2)
+        # Fallback using sysconf (POSIX systems)
+        pages = os.sysconf('SC_PHYS_PAGES')
+        page_size = os.sysconf('SC_PAGE_SIZE')
+        return round((pages * page_size) / (1024**3), 2)
+    except Exception:
+        return 8.0 # Default if anything fails
+
+def display_recommendation_menu(stdscr, ai_budget_gb):
+    curses.curs_set(0)
+    current_row = 0
+    
+    while True:
+        stdscr.clear()
+        stdscr.addstr(0, 0, f"Recommended Models (AI Budget: {ai_budget_gb}GB | 50% OS Rule):", curses.A_BOLD)
+        
+        for idx, model in enumerate(MODELS_CATALOG):
+            x = 2
+            y = 2 + (idx * 2) # Each model takes 2 lines (name + description)
+            
+            # Tagging logic based on budget
+            status = "[RECOMMENDED]" if model["ram"] <= ai_budget_gb else "[! HEAVY]"
+            color_pair = 1 if idx == current_row else 0
+            
+            if color_pair == 1:
+                stdscr.attron(curses.color_pair(1))
+            
+            label = f"{status} {model['id']} - {model['cat']}"
+            stdscr.addstr(y, x, label)
+            stdscr.addstr(y + 1, x + 4, f"Description: {model['desc']}", curses.A_ITALIC)
+            
+            # Additional vertical padding for description
+            stdscr.attroff(curses.color_pair(1))
+        
+        stdscr.refresh()
+        key = stdscr.getch()
+        
+        if key == curses.KEY_UP and current_row > 0:
+            current_row -= 1
+        elif key == curses.KEY_DOWN and current_row < len(MODELS_CATALOG) - 1:
+            current_row += 1
+        elif key in [curses.KEY_ENTER, 10, 13]:
+            return MODELS_CATALOG[current_row]["id"]
+        elif key == ord('q'):
+            return None
 
 def display_interactive_menu(stdscr, models):
     curses.curs_set(0)
@@ -255,13 +340,47 @@ def main():
                 break
 
             if selected_model == "[Install new model]":
-                try:
-                    model_name = input(f"\n{LIGHT_CYAN}Enter model name to install: {RESET}")
-                    if model_name.strip():
-                        end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                        print(f"\n{LIGHT_CYAN}[{end_timestamp}] Installing and starting model: {model_name.strip()}...{RESET}\n")
-                        subprocess.run(["ollama", "run", model_name.strip()])
-                except (KeyboardInterrupt, EOFError):
+                # New sub-menu for installation type
+                install_menu_items = ["[View Recommended Models]", "[Custom Installation (Manual Name)]", "[Go back]"]
+                
+                def run_install_menu(scr):
+                    curses.start_color()
+                    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
+                    current_row = 0
+                    while True:
+                        scr.clear()
+                        scr.addstr(0, 0, "Select installation method:", curses.A_BOLD)
+                        for idx, item in enumerate(install_menu_items):
+                            if idx == current_row:
+                                scr.attron(curses.color_pair(1)); scr.addstr(2+idx, 2, f"> {item}"); scr.attroff(curses.color_pair(1))
+                            else:
+                                scr.addstr(2+idx, 2, f"  {item}")
+                        scr.refresh()
+                        k = scr.getch()
+                        if k == curses.KEY_UP and current_row > 0: current_row -= 1
+                        elif k == curses.KEY_DOWN and current_row < len(install_menu_items)-1: current_row += 1
+                        elif k in [10, 13]: return install_menu_items[current_row]
+                        elif k == ord('q'): return "[Go back]"
+                
+                install_choice = curses.wrapper(run_install_menu)
+                
+                model_to_install = None
+                if install_choice == "[View Recommended Models]":
+                    total_ram = get_system_memory_gb()
+                    ai_budget = round(total_ram * 0.5, 2)
+                    model_to_install = curses.wrapper(display_recommendation_menu, ai_budget)
+                elif install_choice == "[Custom Installation (Manual Name)]":
+                    try:
+                        model_to_install = input(f"\n{LIGHT_CYAN}Enter manual model name to install (e.g. llama3): {RESET}")
+                    except (KeyboardInterrupt, EOFError):
+                        pass
+                
+                if model_to_install and model_to_install.strip():
+                    model_name = model_to_install.strip()
+                    end_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                    print(f"\n{LIGHT_CYAN}[{end_timestamp}] Starting session for: {model_name}...{RESET}\n")
+                    subprocess.run(["ollama", "run", model_name])
+                else:
                     print(f"\n{YELLOW}[INFO] Installation cancelled.{RESET}")
             
             elif selected_model == "[Delete model]":
