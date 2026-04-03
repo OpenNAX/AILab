@@ -130,8 +130,11 @@ def get_installed_models():
     host = host_port[0]
     port = int(host_port[1]) if len(host_port) > 1 else 11434
     
-    if not wait_for_server(host, port):
-        print(f"{RED}[ERROR] [{timestamp}] Ollama server did not start in time. Check 'ollama_server.log' for details.{RESET}")
+    try:
+        if not wait_for_server(host, port):
+            print(f"{RED}[ERROR] [{timestamp}] Ollama server did not start in time. Check 'ollama_server.log' for details.{RESET}")
+            return []
+    except KeyboardInterrupt:
         return []
 
     try:
@@ -156,25 +159,26 @@ def get_installed_models():
         print(f"{RED}[ERROR] [{timestamp}] 'ollama' command not found. Ensure Ollama is installed.{RESET}")
         sys.exit(1)
 
-# --- 1. CATEGORÍA: ULTRA LIGEROS (Termux / Android / Raspberry Pi) ---
+# --- Intelligent Models Catalog (Curated) ---
 MODELS_CATALOG = [
-    {"id": "deepseek-r1:1.5b", "ram": 2, "desc": "Razonamiento logico asombroso para su tamaño", "cat": "Ultra Light"},
-    {"id": "gemma3:4b", "ram": 4, "desc": "Rey en pesos pluma. Multimodal y alta calidad", "cat": "Ultra Light"},
-    {"id": "llama3.2:3b", "ram": 3, "desc": "Muy rapido, eficiente y excelente para chat directo", "cat": "Ultra Light"},
+    # --- ULTRA LIGHT (2GB-4GB) ---
+    {"id": "gemma3:4b", "ram": 4, "desc": "Current king of lightweight models. Multimodal and high quality.", "cat": "Ultra Light", "priority": 10},
+    {"id": "deepseek-r1:1.5b", "ram": 2, "desc": "Incredible reasoning capabilities for its size.", "cat": "Ultra Light", "priority": 9},
+    {"id": "llama3.2:3b", "ram": 3, "desc": "Very fast, efficient and excellent for direct chat.", "cat": "Ultra Light", "priority": 8},
     
-    # --- 2. CATEGORÍA: EL PUNTO DULCE (8GB-16GB RAM) ---
-    {"id": "deepseek-r1:8b", "ram": 8, "desc": "Nivel de inteligencia brutal con bajo consumo", "cat": "Sweet Point"},
-    {"id": "gemma3:12b", "ram": 10, "desc": "El mejor todoterreno. Multimodal de alta gama", "cat": "Sweet Point"},
-    {"id": "qwen2.5:7b", "ram": 8, "desc": "Excelente soporte en español, mates y codigo", "cat": "Sweet Point"},
+    # --- SWEET POINT (8GB-12GB) ---
+    {"id": "deepseek-r1:8b", "ram": 8, "desc": "Distilled from R1. Brilliant intelligence with low consumption.", "cat": "Sweet Point", "priority": 20},
+    {"id": "gemma3:12b", "ram": 10, "desc": "Best all-rounder. Multimodal and competes with larger models.", "cat": "Sweet Point", "priority": 19},
+    {"id": "qwen2.5:7b", "ram": 8, "desc": "Excellent multilingual support, solid in math and coding.", "cat": "Sweet Point", "priority": 18},
     
-    # --- 3. CATEGORÍA: ALTO RENDIMIENTO (20GB+ RAM) ---
-    {"id": "gemma3:27b", "ram": 20, "desc": "Calidad de modelo comercial en formato abierto", "cat": "High Performance"},
-    {"id": "qwen2.5:32b", "ram": 24, "desc": "Una bestia para desarrollo y redaccion compleja", "cat": "High Performance"},
-    {"id": "llama3.3:70b", "ram": 40, "desc": "El modelo abierto más potente (Hardware Pesado)", "cat": "High Performance"},
+    # --- HIGH PERFORMANCE (24GB+) ---
+    {"id": "gemma3:27b", "ram": 20, "desc": "Closed commercial model quality in an open format.", "cat": "High Performance", "priority": 30},
+    {"id": "qwen2.5:32b", "ram": 24, "desc": "A beast for software development and complex writing.", "cat": "High Performance", "priority": 31},
+    {"id": "llama3.3:70b", "ram": 40, "desc": "Most powerful open model. Requires heavy hardware.", "cat": "High Performance", "priority": 32},
     
-    # --- 4. CATEGORÍA: HERRAMIENTAS DE APOYO ---
-    {"id": "nomic-embed-text", "ram": 1, "desc": "Para vectorizar texto (RAG / Lectura PDFs)", "cat": "Support Tools"},
-    {"id": "qwen2.5-coder:1.5b", "ram": 2, "desc": "Autocompletado de codigo rapido en segundo plano", "cat": "Support Tools"},
+    # --- SUPPORT TOOLS ---
+    {"id": "nomic-embed-text", "ram": 1, "desc": "Text embeddings for RAG (reading PDFs/txt efficiently).", "cat": "Support Tools", "priority": 5},
+    {"id": "qwen2.5-coder:1.5b", "ram": 2, "desc": "Fast code autocompletion for background tasks.", "cat": "Support Tools", "priority": 4},
 ]
 
 def get_system_memory_gb():
@@ -197,26 +201,35 @@ def display_recommendation_menu(stdscr, ai_budget_gb):
     curses.curs_set(0)
     current_row = 0
     
+    # Smart sorting logic:
+    # 1. Models within budget first
+    # 2. Sort by categorical priority (Sweet Point > Ultra Light > Tools > Heavy)
+    def sort_score(m):
+        within_budget = 1 if m["ram"] <= ai_budget_gb else 0
+        # If within budget, we prioritize Sweet Point (priority ~20), then Ultra Light (priority ~10)
+        # If not within budget, they go to the bottom.
+        return (within_budget, m["priority"])
+    
+    sorted_catalog = sorted(MODELS_CATALOG, key=sort_score, reverse=True)
+    
     while True:
         stdscr.clear()
         stdscr.addstr(0, 0, f"Recommended Models (AI Budget: {ai_budget_gb}GB | 50% OS Rule):", curses.A_BOLD)
         
-        for idx, model in enumerate(MODELS_CATALOG):
+        for idx, model in enumerate(sorted_catalog):
             x = 2
-            y = 2 + (idx * 2) # Each model takes 2 lines (name + description)
+            y = 2 + (idx * 2) 
             
-            # Tagging logic based on budget
             status = "[RECOMMENDED]" if model["ram"] <= ai_budget_gb else "[! HEAVY]"
             color_pair = 1 if idx == current_row else 0
             
             if color_pair == 1:
                 stdscr.attron(curses.color_pair(1))
             
-            label = f"{status} {model['id']} - {model['cat']}"
+            label = f"{status} {model['id']} ({model['cat']})"
             stdscr.addstr(y, x, label)
-            stdscr.addstr(y + 1, x + 4, f"Description: {model['desc']}", curses.A_ITALIC)
+            stdscr.addstr(y + 1, x + 4, f"Info: {model['desc']}", curses.A_ITALIC)
             
-            # Additional vertical padding for description
             stdscr.attroff(curses.color_pair(1))
         
         stdscr.refresh()
@@ -224,10 +237,10 @@ def display_recommendation_menu(stdscr, ai_budget_gb):
         
         if key == curses.KEY_UP and current_row > 0:
             current_row -= 1
-        elif key == curses.KEY_DOWN and current_row < len(MODELS_CATALOG) - 1:
+        elif key == curses.KEY_DOWN and current_row < len(sorted_catalog) - 1:
             current_row += 1
         elif key in [curses.KEY_ENTER, 10, 13]:
-            return MODELS_CATALOG[current_row]["id"]
+            return sorted_catalog[current_row]["id"]
         elif key == ord('q'):
             return None
 
@@ -401,6 +414,8 @@ def main():
                 except (KeyboardInterrupt, EOFError):
                     print(f"\n{YELLOW}[INFO] Model execution interrupted.{RESET}")
             
+        except (KeyboardInterrupt, EOFError):
+            continue
         except Exception as e:
             if not isinstance(e, SystemExit):
                 print(f"\n{RED}[ERROR] Unhandled error: {e}{RESET}")
