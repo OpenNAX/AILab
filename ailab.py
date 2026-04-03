@@ -42,6 +42,7 @@ def clear():
 def print_banner():
     clear()
     version = "v1.0.0"
+
     opennax = f"""{LIGHT_CYAN}
     ███████                                  ██████   █████   █████████   █████ █████
   ███░░░░░███                               ░░██████ ░░███   ███░░░░░███ ░░███ ░░███
@@ -184,7 +185,8 @@ def start_ollama_server():
     
     cmd = []
     
-    if sys.platform.startswith("linux"):
+    if sys.platform.startswith("linux") and os.environ.get("OLLAMA_PIN_CORES") == "1":
+
         if subprocess.call("command -v taskset >/dev/null 2>&1", shell=True) == 0:
             try:
                 cpu_count = os.cpu_count() or 4

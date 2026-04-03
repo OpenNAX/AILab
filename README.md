@@ -31,6 +31,8 @@ If you are running AILab on a specific hardware configuration and want to disabl
 - `--web` : Binds the Ollama host to `0.0.0.0` instead of the optimized local `127.0.0.1` loopback. Useful if you want to connect to AILab from another device on your network.
 - `--oom-bypass` : Disables all aggressive Termux/Android memory protections (OOM Killer avoidance, `mmap` disables, strict parallelism limits). *Warning: May cause your mobile device to freeze or restart if RAM runs out.*
 - `--no-gov` : Prevents the script from automatically switching your Linux CPU governor to `performance`. Useful if you manage your CPU frequencies with other daemons like `TLP` or `auto-cpufreq`.
-- `--max-threads` : Disables Thermal/Battery thread protections. By default, AILab restricts Ollama to high-performance cores (P-Cores on macOS) or half the logical threads (Linux/Android) to prevent thermal throttling and save battery. This flag forces Ollama to use 100% of available CPU threads.
+- `--max-threads` : Disables Thermal/Battery thread protections. By default, AILab restricts Ollama to high-performance cores (P-Cores on macOS) or `N-1` logical threads (Linux/Android) to maintain system responsiveness. This flag forces Ollama to use 100% of available CPU threads.
+- `--power-save` : Restores the legacy battery-saving behavior (Linux/Android only), limiting Ollama to 50% of available CPU cores. Useful if you want to run AILab in the background without depleting your mobile battery.
+
 - `--fp16-cache` : Disables the global 8-bit (`q8_0`) KV Cache quantization. The model will remember context in full FP16 precision. *Warning: This doubles the RAM usage for long contexts and may force macOS/Linux into using disk Swap, severely impacting inference speed.*
 - `--no-keepalive` : Disables the infinite memory lock (`KEEP_ALIVE="-1"`). The model will be unloaded from RAM if inactive for 5 minutes, freeing up memory for other tasks.

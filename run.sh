@@ -8,6 +8,8 @@ NO_GOV=0
 MAX_THREADS=0
 FP16_CACHE=0
 NO_KEEPALIVE=0
+POWER_SAVE=0
+
 
 for arg in "$@"; do
     case $arg in
@@ -35,7 +37,12 @@ for arg in "$@"; do
         NO_KEEPALIVE=1
         shift
         ;;
+        --power-save)
+        POWER_SAVE=1
+        shift
+        ;;
     esac
+
 done
 
 if [[ "$WEB_MODE" -eq 1 ]]; then
@@ -153,17 +160,24 @@ if [[ "$MAX_THREADS" -eq 0 ]]; then
         export OLLAMA_NUM_THREADS=${P_CORES:-4}
     else
         LOGICAL_CORES=$(nproc 2>/dev/null || echo 4)
-        OPT_THREADS=$((LOGICAL_CORES / 2))
-        if [ "$OPT_THREADS" -eq 0 ]; then OPT_THREADS=1; fi
+        if [[ "$POWER_SAVE" -eq 1 ]]; then
+            OPT_THREADS=$((LOGICAL_CORES / 2))
+            if [ "$OPT_THREADS" -eq 0 ]; then OPT_THREADS=1; fi
+            echo "[*] Power Save Mode: Limiting CPU threads to 50% (${OPT_THREADS})"
+        else
+            OPT_THREADS=$((LOGICAL_CORES - 1))
+            if [ "$OPT_THREADS" -le 0 ]; then OPT_THREADS=1; fi
+            echo "[*] Performance Mode: Using almost all logical cores (${OPT_THREADS})"
+        fi
         export OLLAMA_NUM_THREADS=${OPT_THREADS}
     fi
-    echo "[*] Thermal/Battery Optimization: OLLAMA_NUM_THREADS set to ${OLLAMA_NUM_THREADS}"
 else
     echo "[!] MAX_THREADS bypass enabled: Unrestricted CPU usage."
 fi
 
+
 echo ""
-echo "[+] Starting OpenNAX AILab | v2.0.0"
+echo "[+] Starting OpenNAX AILab | v1.0.0"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "[*] macOS detected: Wrapping with 'caffeinate' to prevent App Nap & sleep..."
