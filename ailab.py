@@ -43,7 +43,7 @@ def clear():
 
 def print_banner():
     clear()
-    version = "v2.1.0"
+    version = "v2.1.2"
 
 
     opennax = f"""{LIGHT_CYAN}

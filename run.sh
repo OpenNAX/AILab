@@ -257,7 +257,7 @@ fi
 
 
 echo ""
-echo "[+] Starting OpenNAX AILab | v2.1.0"
+echo "[+] Starting OpenNAX AILab | v2.1.2"
 
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
