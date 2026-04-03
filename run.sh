@@ -6,9 +6,10 @@ OOM_BYPASS=0
 WEB_MODE=0
 NO_GOV=0
 MAX_THREADS=0
-FP16_CACHE=0
 NO_KEEPALIVE=0
 POWER_SAVE=0
+ELITE_MODE=0
+
 
 
 for arg in "$@"; do
@@ -41,7 +42,12 @@ for arg in "$@"; do
         POWER_SAVE=1
         shift
         ;;
+        --elite)
+        ELITE_MODE=1
+        shift
+        ;;
     esac
+
 
 done
 
@@ -140,16 +146,42 @@ if [[ -n "$TERMUX_VERSION" ]]; then
         echo "[!] Termux detected, but --oom-bypass is enabled."
         echo "    WARNING: Memory protections are DISABLED. Device may freeze or reboot!"
     else
-        echo ""
-        echo "[!] Termux detected. Applying memory protections (Anti-OOM)..."
-
-        export OLLAMA_NUM_PARALLEL=1
-        export OLLAMA_MAX_QUEUE=1
-        export OLLAMA_FLASH_ATTENTION=0
-        export OLLAMA_NOMMAP=1
-        export GOGC=50
+        # Auto-detect Snapdragon 8 Elite or similar High-End hardware (RAM > 8GB)
+        if [[ -n "$TOTAL_RAM" ]] && [[ "$TOTAL_RAM" -gt 8000 ]] || [[ "$ELITE_MODE" -eq 1 ]]; then
+            echo ""
+            echo "[✨] Elite Hardware detected (RAM: ${TOTAL_RAM}MiB). Unleashing Full Potential..."
+            
+            export OLLAMA_NUM_PARALLEL=2
+            export OLLAMA_MAX_QUEUE=4
+            export OLLAMA_FLASH_ATTENTION=1
+            export OLLAMA_NOMMAP=0
+            export GOGC=100
+            export OLLAMA_KV_CACHE_TYPE="fp16"
+            
+            # Experimental Vulkan support for Adreno GPU
+            for vulkan_path in /system/vendor/lib64/libvulkan.so /system/lib64/libvulkan.so /usr/lib/libvulkan.so; do
+                if [[ -f "$vulkan_path" ]]; then
+                    echo "[*] Found Vulkan library: $vulkan_path. Attempting GPU Acceleration..."
+                    export OLLAMA_VULKAN=1
+                    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$(dirname $vulkan_path)"
+                    break
+                fi
+            done
+        else
+            echo ""
+            echo "[!] Termux detected. Applying memory protections (Anti-OOM)..."
+            export OLLAMA_NUM_PARALLEL=1
+            export OLLAMA_MAX_QUEUE=1
+            export OLLAMA_FLASH_ATTENTION=0
+            export OLLAMA_NOMMAP=1
+            export GOGC=50
+            if [[ "$FP16_CACHE" -eq 0 ]]; then
+                export OLLAMA_KV_CACHE_TYPE="q8_0"
+            fi
+        fi
     fi
 fi
+
 
 if [[ "$MAX_THREADS" -eq 0 ]]; then
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -177,7 +209,8 @@ fi
 
 
 echo ""
-echo "[+] Starting OpenNAX AILab | v1.0.0"
+echo "[+] Starting OpenNAX AILab | v2.1.0"
+
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "[*] macOS detected: Wrapping with 'caffeinate' to prevent App Nap & sleep..."
