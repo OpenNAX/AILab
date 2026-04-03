@@ -7,8 +7,12 @@ import curses
 import atexit
 import signal
 import subprocess
+import urllib.request
 import concurrent.futures
 from datetime import datetime
+
+VERSION = "v2.1.2"
+UPDATE_URL = "https://raw.githubusercontent.com/OpenNAX/API/refs/heads/main/OpenNAX-AILab.txt"
 
 if os.environ.get("OPENNAX_AILAB_RUN") != "1":
     print("\033[1;31m[ERROR] Do not run this script directly. Please use ./run.sh instead to apply system optimizations.\033[0m")
@@ -43,9 +47,8 @@ def clear():
 
 def print_banner():
     clear()
-    version = "v2.1.2"
-
-
+    global VERSION
+    version = VERSION
     opennax = f"""{LIGHT_CYAN}
     ███████                                  ██████   █████   █████████   █████ █████
   ███░░░░░███                               ░░██████ ░░███   ███░░░░░███ ░░███ ░░███
@@ -96,7 +99,6 @@ def _fetch_model_info(line):
     except Exception:
         pass
         
-    # Restore sanitization for clean UI (e.g. gemma3:4b -> Gemma 3)
     base_name = name.split(':')[0]
     match = re.match(r"([a-zA-Z\-]+)([0-9\.]*).*", base_name)
     if match:
@@ -125,7 +127,6 @@ def wait_for_server(host="127.0.0.1", port=11434, timeout=30):
 def get_installed_models():
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     
-    # Ensure server is ready before listing
     host_port = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434").replace("http://", "").split(":")
     host = host_port[0]
     port = int(host_port[1]) if len(host_port) > 1 else 11434
@@ -159,30 +160,24 @@ def get_installed_models():
         print(f"{RED}[ERROR] [{timestamp}] 'ollama' command not found. Ensure Ollama is installed.{RESET}")
         sys.exit(1)
 
-# --- Intelligent Models Catalog (Curated) ---
 MODELS_CATALOG = [
-    # --- ULTRA LIGHT (2GB-4GB) ---
     {"id": "gemma3:4b", "ram": 4, "desc": "Current king of lightweight models. Multimodal and high quality.", "cat": "Ultra Light", "priority": 10},
     {"id": "deepseek-r1:1.5b", "ram": 2, "desc": "Incredible reasoning capabilities for its size.", "cat": "Ultra Light", "priority": 9},
     {"id": "llama3.2:3b", "ram": 3, "desc": "Very fast, efficient and excellent for direct chat.", "cat": "Ultra Light", "priority": 8},
     
-    # --- SWEET POINT (8GB-12GB) ---
     {"id": "deepseek-r1:8b", "ram": 8, "desc": "Distilled from R1. Brilliant intelligence with low consumption.", "cat": "Sweet Point", "priority": 20},
     {"id": "gemma3:12b", "ram": 10, "desc": "Best all-rounder. Multimodal and competes with larger models.", "cat": "Sweet Point", "priority": 19},
     {"id": "qwen2.5:7b", "ram": 8, "desc": "Excellent multilingual support, solid in math and coding.", "cat": "Sweet Point", "priority": 18},
     
-    # --- HIGH PERFORMANCE (24GB+) ---
     {"id": "gemma3:27b", "ram": 20, "desc": "Closed commercial model quality in an open format.", "cat": "High Performance", "priority": 30},
     {"id": "qwen2.5:32b", "ram": 24, "desc": "A beast for software development and complex writing.", "cat": "High Performance", "priority": 31},
     {"id": "llama3.3:70b", "ram": 40, "desc": "Most powerful open model. Requires heavy hardware.", "cat": "High Performance", "priority": 32},
     
-    # --- SUPPORT TOOLS ---
     {"id": "nomic-embed-text", "ram": 1, "desc": "Text embeddings for RAG (reading PDFs/txt efficiently).", "cat": "Support Tools", "priority": 5},
     {"id": "qwen2.5-coder:1.5b", "ram": 2, "desc": "Fast code autocompletion for background tasks.", "cat": "Support Tools", "priority": 4},
 ]
 
 def get_system_memory_gb():
-    """Detects total physical RAM in GB with a fallback for andriod/linux."""
     try:
         if os.path.exists('/proc/meminfo'):
             with open('/proc/meminfo', 'r') as f:
@@ -190,24 +185,25 @@ def get_system_memory_gb():
                     if "MemTotal" in line:
                         mem_kb = int(line.split()[1])
                         return round(mem_kb / (1024 * 1024), 2)
-        # Fallback using sysconf (POSIX systems)
+        
+        if sys.platform == 'darwin':
+            result = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True)
+            if result.returncode == 0:
+                mem_bytes = int(result.stdout.strip())
+                return round(mem_bytes / (1024**3), 2)
+
         pages = os.sysconf('SC_PHYS_PAGES')
         page_size = os.sysconf('SC_PAGE_SIZE')
         return round((pages * page_size) / (1024**3), 2)
     except Exception:
-        return 8.0 # Default if anything fails
+        return 8.0
 
 def display_recommendation_menu(stdscr, ai_budget_gb):
     curses.curs_set(0)
     current_row = 0
-    
-    # Smart sorting logic:
-    # 1. Models within budget first
-    # 2. Sort by categorical priority (Sweet Point > Ultra Light > Tools > Heavy)
+
     def sort_score(m):
         within_budget = 1 if m["ram"] <= ai_budget_gb else 0
-        # If within budget, we prioritize Sweet Point (priority ~20), then Ultra Light (priority ~10)
-        # If not within budget, they go to the bottom.
         return (within_budget, m["priority"])
     
     sorted_catalog = sorted(MODELS_CATALOG, key=sort_score, reverse=True)
@@ -292,6 +288,46 @@ def display_interactive_menu(stdscr, models):
         elif key == ord('q'):
             return None
 
+def check_for_updates():
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    print(f"{LIGHT_GREEN}[{timestamp}] Checking for updates...{RESET}")
+    
+    try:
+        with urllib.request.urlopen(UPDATE_URL, timeout=3) as response:
+            content = response.read().decode('utf-8')
+            match = re.search(r"version:\s*(v[0-9\.]+)", content)
+            if match:
+                remote_version = match.group(1).strip()
+                if remote_version != VERSION:
+                    print(f"\n{YELLOW}[!] NEW VERSION AVAILABLE: {remote_version} (Local: {VERSION}){RESET}")
+                    choice = input(f"{LIGHT_CYAN}Would you like to update now via 'git pull'? [y/N]: {RESET}").lower()
+                    if choice == 'y':
+                        perform_update()
+            else:
+                pass
+    except Exception as e:
+        print(f"{YELLOW}[INFO] Update check skipped (offline or timeout).{RESET}")
+
+def perform_update():
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    print(f"\n{LIGHT_GREEN}[{timestamp}] Updating AILab...{RESET}")
+    
+    try:
+        if os.path.exists('.git'):
+            result = subprocess.run(["git", "pull"], capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"{LIGHT_GREEN}[SUCCESS] Update complete! Restarting...{RESET}")
+                time.sleep(1)
+                os.execv(sys.executable, ['python3'] + sys.argv)
+            else:
+                print(f"{RED}[ERROR] git pull failed: {result.stderr}{RESET}")
+        else:
+            print(f"{RED}[ERROR] Not a git repository. Cannot auto-update.{RESET}")
+    except Exception as e:
+        print(f"{RED}[ERROR] Update failed: {e}{RESET}")
+    
+    input(f"\n{YELLOW}Press Enter to continue with current version...{RESET}")
+
 def start_ollama_server():
     global ollama_process
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
@@ -336,6 +372,7 @@ def run_curses_ui(stdscr, models):
     return display_interactive_menu(stdscr, models)
 
 def main():
+    check_for_updates()
     print_banner()
     
     start_ollama_server()
@@ -349,11 +386,10 @@ def main():
             models = get_installed_models()
             selected_model = curses.wrapper(run_curses_ui, models)
 
-            if selected_model is None: # Pressed 'q'
+            if selected_model is None:
                 break
 
             if selected_model == "[Install new model]":
-                # New sub-menu for installation type
                 install_menu_items = ["[View Recommended Models]", "[Custom Installation (Manual Name)]", "[Go back]"]
                 
                 def run_install_menu(scr):
