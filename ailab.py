@@ -1,6 +1,8 @@
 import os
 import re
 import sys
+import time
+import socket
 import curses
 import atexit
 import signal
@@ -94,20 +96,34 @@ def _fetch_model_info(line):
     except Exception:
         pass
         
-    base_name = name.split(':')[0]
-    match = re.match(r"([a-zA-Z\-]+)(.*)", base_name)
-    if match:
-        name_part = match.group(1).capitalize()
-        num_part = match.group(2)
-        clean_name = f"{name_part} {num_part}".strip() if num_part else name_part
-    else:
-        clean_name = base_name.capitalize()
-        
-    display_name = f"{clean_name} (Size: {size_str} | Params: {params_str})"
+    display_name = f"{name} (Size: {size_str} | Params: {params_str})"
     return {"name": name, "display": display_name}
+
+
+def wait_for_server(host="127.0.0.1", port=11434, timeout=30):
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    print(f"{YELLOW}[WAIT] [{timestamp}] Waiting for Ollama server to be ready on {host}:{port}...{RESET}")
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return True
+        except (socket.timeout, ConnectionRefusedError):
+            time.sleep(1)
+    return False
 
 def get_installed_models():
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    
+    # Ensure server is ready before listing
+    host_port = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434").replace("http://", "").split(":")
+    host = host_port[0]
+    port = int(host_port[1]) if len(host_port) > 1 else 11434
+    
+    if not wait_for_server(host, port):
+        print(f"{RED}[ERROR] [{timestamp}] Ollama server did not start in time. Check 'ollama_server.log' for details.{RESET}")
+        return []
+
     try:
         result = subprocess.run(["ollama", "list"], capture_output=True, text=True, check=True)
         lines = result.stdout.strip().split('\n')
