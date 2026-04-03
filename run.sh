@@ -151,6 +151,7 @@ if [[ -n "$TERMUX_VERSION" ]]; then
             echo ""
             echo "[✨] Elite Hardware detected (RAM: ${TOTAL_RAM}MiB). Unleashing Full Potential..."
             
+            export OLLAMA_DEBUG=1
             export OLLAMA_NUM_PARALLEL=2
             export OLLAMA_MAX_QUEUE=4
             export OLLAMA_FLASH_ATTENTION=1

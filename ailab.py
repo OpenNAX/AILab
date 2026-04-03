@@ -208,12 +208,13 @@ def start_ollama_server():
         
     cmd.extend(["ollama", "serve"])
     
-    with open('ollama_server.log', 'w') as log_file:
-        try:
-            ollama_process = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
-        except FileNotFoundError:
-            print(f"{RED}[ERROR] [{timestamp}] Could not start ollama server. Ensure Ollama has been installed.{RESET}")
-            sys.exit(1)
+    log_file = open('ollama_server.log', 'w')
+    try:
+        ollama_process = subprocess.Popen(cmd, stdout=log_file, stderr=log_file)
+    except FileNotFoundError:
+        print(f"{RED}[ERROR] [{timestamp}] Could not start ollama server. Ensure Ollama has been installed.{RESET}")
+        sys.exit(1)
+
 
 def run_curses_ui(stdscr, models):
     curses.start_color()
