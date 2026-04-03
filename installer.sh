@@ -1,5 +1,5 @@
 clear
-echo "[*] OpenNAX AILab · v1.0.0"
+echo "[*] OpenNAX AILab · v2.1.0"
 echo "Starting download of required packages..."
 
 echo "[+] Installing Ollama and GPU dependencies..."
